@@ -1,31 +1,42 @@
 -- seaflex
--- game mode added
+-- companion app for earthsea
+-- 
+-- play grid notes correctly to 
+-- advance chord. in light mode,
+-- match brightly lit keys, in
+-- dark mode any voicing with
+-- correct notes is accepted.
+--
+-- in game mode, high scores
+-- are saved separately for
+-- different setting 
+-- combinations as shown on 
+-- game load screen.
 
-RUN = true
-SCALE_BRIGHTNESS = 2
-OCTAVE_MARKER_BRIGHTNESS = 5
-BRIGHTNESS = 14
-OVERSIZE_CHORD_WIDTH = 5.5
--- TODO - set back to 50
-GAME_LENGTH = 10
+local SCALE_BRIGHTNESS = 2
+local OCTAVE_MARKER_BRIGHTNESS = 5
+local BRIGHTNESS = 14
+local OVERSIZE_CHORD_WIDTH = 5.5
+local LIGHT_MODE_GAME_LENGTH = 50
+local DARK_MODE_GAME_LENGTH = 10
 
-NOTES = { 'A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#' }
+local NOTES = { 'A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#' }
 
-GUIDES_OPTIONS = { 'none', 'octave markers', 'full scale' }
-VOICING_OPTIONS = { 'basic', 'expanded', 'closed only' }
+local GUIDES_OPTIONS = { 'none', 'octave markers', 'full scale' }
+local VOICING_OPTIONS = { 'closed only', 'basic', 'expanded' }
 
-CLOSED_VOICINGS = {
+local CLOSED_VOICINGS = {
   closed = { 0, 0, 0, 0 }
 }
 
-BASIC_VOICINGS = {
+local BASIC_VOICINGS = {
   closed = { 0, 0, 0, 0 },
   first_inversion = { 1, 0, 0, 0 },
   second_inversion = { 1, 1, 0, 0 },
   third_inversion = { 1, 1, 1, 0 }
 }
 
-EXPANDED_VOICINGS = {
+local EXPANDED_VOICINGS = {
   closed = { 0, 0, 0, 0 },
   first_inversion = { 1, 0, 0, 0 },
   second_inversion = { 1, 1, 0, 0 },
@@ -44,7 +55,7 @@ EXPANDED_VOICINGS = {
   spread_third_inversion = { 1, 1, 2, -1 },
 }
 
-SCALE_OPTIONS = { 
+local SCALE_OPTIONS = { 
   'chromatic', 
   'major', 
   'natural minor', 
@@ -56,7 +67,7 @@ SCALE_OPTIONS = {
   'blues' 
 }
 
-SCALE_DEFINITIONS = {
+local SCALE_DEFINITIONS = {
   chromatic = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 },
   major = { 0, 2, 4, 5, 7, 9, 11 },
   ['natural minor'] = { 0, 2, 3, 5, 7, 8, 10 },
@@ -68,7 +79,7 @@ SCALE_DEFINITIONS = {
   blues = { 0, 2, 3, 4, 7, 9 },
 }
 
-CHORDS = {
+local CHORDS = {
   maj = { 0, 4, 7 },
   min = { 0, 3, 7 },
   dim = { 0, 3, 6 },
@@ -87,58 +98,52 @@ CHORDS = {
 
 local polysub = include 'we/lib/polysub'
 
+local g = grid.connect()
+
+local rounds_finished = 0
+local game_start_time = nil
+local time_elapsed = 0
+local game_errors = 0
+local dark_mode = false
+local chord_description = ''
+local state = 'free'
+
 engine.name = 'PolySub'
 
-local function getHz(deg,oct)
-  return base * ratios[deg] * (2^oct)
+function fresh_grid(b)
+  b = b or 0
+  return {
+    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
+    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
+    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
+    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
+    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
+    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
+    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
+    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
+  }
 end
+
+local held_keys = fresh_grid()
+local enabled_coords = fresh_grid()
 
 local function getHzET(note)
   return 55*2^(note/12)
 end
 
 function init()
-  g = grid.connect()
-  
-  params = paramset.new()
-  
   params:add{ type = 'option', id = 'scale_keys', name = 'scale key', options = NOTES }
   params:add{ type = 'option', id = 'scale_types', name = 'scale type', options = SCALE_OPTIONS }
-  params:add{ type = 'option', id = 'guides', name = 'guides', options = GUIDES_OPTIONS }
-  params:add{ type = 'option', id = 'voicings', name = 'voicings', options = VOICING_OPTIONS }
+  params:add{ type = 'option', id = 'guides', name = 'guides', options = GUIDES_OPTIONS, default = 2 }
+  params:add{ type = 'option', id = 'voicings', name = 'voicings', options = VOICING_OPTIONS, default = 2 }
   params:add{ type = 'number', id = 'num_hands', name = 'number of hands', min = 1, max = 2, default = 1 }
   params:add_separator()
-  
   polysub:params()
   
   engine.stopAll()
   
-  held_keys = fresh_grid()
-  enabled_lights = fresh_grid()
-  show_chords = true
-  chord_description = ''
-  state = 'free'
-  game_key_groups_finished = 0
-  game_start_time = nil
-  game_end_time = nil
-  time_elapsed = 0
-  game_errors = 0
-  
-  main_loop = metro.init(update_grid, 0.1)
-  game_loop = metro.init(update_game, 0.1)
-
-  if RUN then
-    main_loop:start()
-  end
-end
-
-function update_grid()
-  activate_chords()
-  redraw_lights()
-
-  if correct_keys_held() then
-    enabled_lights = fresh_grid()
-  end
+  local main_loop = metro.init(main_update_loop, 0.1)
+  main_loop:start()
 end
 
 function key(n, z)
@@ -147,16 +152,28 @@ function key(n, z)
       state = 'game_loading'
     elseif state == 'game_loading' then
       start_game()
+    elseif state == 'game_in_progress' then
+      end_game()
     else
       state = 'free'
     end
   end
   
-  if n == 3 and z == 1 then
-    show_chords = not show_chords
+  if n == 3 and z == 1 and (state == 'free' or state == 'game_loading') then
+    dark_mode = not dark_mode
   end
   
   redraw_screen()
+end
+
+function enc(n, delta)
+  if n == 1 then
+    mix:delta('output', delta)
+  elseif n == 2 then
+    params:delta('shape', delta)
+  elseif n == 3 then
+    params:delta('timbre', delta)
+  end
 end
 
 function norns.grid.key(id, x, y, s)
@@ -184,7 +201,7 @@ function toggle_note(x, y, on)
 end
 
 function coords_to_note(x, y)
-  local note = ((7 - y) * 5) + x
+  local note = note_value(x, y)
   return NOTES[(note % 12) + 1]
 end
 
@@ -192,25 +209,44 @@ function coord_id(x, y)
   return (x * 8) + y
 end
 
+function main_update_loop()
+  activate_chords()
+  redraw_lights()
+  
+  if correct_keys_held() then
+    enabled_coords = fresh_grid()
+    rounds_finished = rounds_finished + 1
+  end
+  
+  if state == 'game_in_progress' then
+    time_elapsed = os.time() - game_start_time
+    redraw_screen()
+    
+    if rounds_finished == game_length() then
+      end_game()
+    end
+  end
+end
+
 function activate_chords()
-  if num_active(enabled_lights) > 0 then
+  if num_active(enabled_coords) > 0 then
     return
   end
   
-  potential_enabled_lights = fresh_grid()
+  local potential_enabled_coords = fresh_grid()
   chord_description = ''
 
-  chords_generated = 0
-  while chords_generated < number_of_hands() do
-    potential_enabled_lights = fresh_grid()
-    potential_chord = random_chord()
-    potential_voicing = random_voicing()
-    valid_chord = true
+  local chords_generated = 0
+  while chords_generated < params:get('num_hands') do
+    local potential_enabled_coords = fresh_grid()
+    local potential_chord = random_chord()
+    local potential_voicing = random_voicing()
+    local valid_chord = true
     
     -- we go slightly beyond the boundaries of the grid so that even with voicings
     -- we can get all chord shapes all throughout the grid
-    root = { x = math.random(-1, g.cols + 2), y = math.random(-1, g.rows + 2) }
-    shape = chord_shape(
+    local root = { x = math.random(-1, g.cols + 2), y = math.random(-1, g.rows + 2) }
+    local shape = chord_shape(
       root,
       potential_chord.chord_def, 
       potential_voicing.voicing_def
@@ -220,21 +256,21 @@ function activate_chords()
       valid_chord = false
     else
       for _, coord in pairs(shape) do
-        x = coord.x
-        y = coord.y
+        local x = coord.x
+        local y = coord.y
         
-        if not in_scale(coords_to_note(x, y)) then
+        if (not in_scale(coords_to_note(x, y))) or (not in_grid(x, y)) then
           valid_chord = false
           break
         end
         
-        potential_enabled_lights[y][x] = 1
+        potential_enabled_coords[y][x] = 1
       end
     end
     
     if valid_chord then
       chords_generated = chords_generated + 1
-      enabled_lights = combine_grids(enabled_lights, potential_enabled_lights)
+      enabled_coords = combine_grids(enabled_coords, potential_enabled_coords)
       
       if chord_description ~= '' then
         chord_description = chord_description .. ' / '
@@ -244,12 +280,12 @@ function activate_chords()
     end
   end
   
-  remove_doubled_notes(enabled_lights)
+  remove_doubled_notes(enabled_coords)
   redraw_screen()
 end
 
 function remove_doubled_notes(grid)
-  enabled_notes = {}
+  local enabled_notes = {}
   
   for x = 1, g.cols do
     for y = 1, g.rows do
@@ -265,8 +301,8 @@ function remove_doubled_notes(grid)
 end
 
 function random_chord()
-  chord_number = math.random(table_length(CHORDS))
-  num = 0
+  local chord_number = math.random(table_length(CHORDS))
+  local num = 0
   
   for name, def in pairs(CHORDS) do
     num = num + 1
@@ -277,15 +313,15 @@ function random_chord()
 end
 
 function random_voicing()
-  voicings = CLOSED_VOICINGS
-  if voicing_option() == 'expanded' then
+  local voicings = CLOSED_VOICINGS
+  if params:string('voicings') == 'expanded' then
     voicings = EXPANDED_VOICINGS
-  elseif voicing_option() == 'basic' then
+  elseif params:string('voicings') == 'basic' then
     voicings = BASIC_VOICINGS
   end
   
-  voicing_number = math.random(table_length(voicings))
-  num = 0
+  local voicing_number = math.random(table_length(voicings))
+  local num = 0
   
   for name, def in pairs(voicings) do
     num = num + 1
@@ -296,33 +332,33 @@ function random_voicing()
 end
 
 function position_options(root, interval)
-  options = {}
+  local options = {}
   
-  option = { x = root.x + interval, y = root.y }
+  local option = { x = root.x + interval, y = root.y }
   while option.x <= g.cols do
     if in_grid(option.x, option.y) then
       table.insert(options, deep_copy(option))
     end
     
     option.x = option.x + 5
-    option.y = option.y - 1
+    option.y = option.y + 1
   end
   
-  option = { x = root.x + interval - 5, y = root.y + 1 }
+  option = { x = root.x + interval - 5, y = root.y - 1 }
   while option.x >= 1 do
     if in_grid(option.x, option.y) then
       table.insert(options, deep_copy(option))
     end
     
     option.x = option.x - 5
-    option.y = option.y + 1
+    option.y = option.y - 1
   end
   
   return options
 end
 
 function voice_chord_def(chord_def, voicing_def)
-  voiced_chord_def = {}
+  local voiced_chord_def = {}
   
   for idx, semitone_interval in pairs(chord_def) do
     table.insert(voiced_chord_def, semitone_interval + (voicing_def[idx] * 12))
@@ -338,12 +374,12 @@ end
 -- could compare by max distance or could first constrain by RMS distance
 -- from root, or some combination
 function chord_shape(root, chord_def, voicing_def)
-  voiced_chord_def = voice_chord_def(chord_def, voicing_def)
+  local voiced_chord_def = voice_chord_def(chord_def, voicing_def)
   -- we artificially place the root in the shape to begin with so that we can
   -- start as close as possible, but will remove it later
-  shape = { root }
-  pass = 1
-  
+  local shape = { root }
+  local pass = 1
+
   for _, semitone_interval in pairs(voiced_chord_def) do
     -- see comment above
     if pass == 2 then
@@ -351,22 +387,22 @@ function chord_shape(root, chord_def, voicing_def)
     end
     pass = pass + 1
     
-    options = position_options(root, semitone_interval)
-    best_option = table.remove(options, 1)
+    local options = position_options(root, semitone_interval)
+    local best_option = table.remove(options, 1)
     if best_option == nil then return nil end
-    best_shape = deep_copy(shape)
+    local best_shape = deep_copy(shape)
     table.insert(best_shape, best_option)
     
     while #options > 0 do
-      potential_option = table.remove(options, 1)
-      potential_shape = deep_copy(shape)
+      local potential_option = table.remove(options, 1)
+      local potential_shape = deep_copy(shape)
       table.insert(potential_shape, potential_option)
       
-      best_distance = max_distance(best_shape)
-      potential_distance = max_distance(potential_shape)
+      local best_distance = max_distance(best_shape)
+      local potential_distance = max_distance(potential_shape)
       
       if best_distance == potential_distance then
-        shapes = { best_shape, potential_shape }
+        local shapes = { best_shape, potential_shape }
         best_shape = shapes[math.random(2)]
       elseif best_distance < potential_distance then
         best_shape = best_shape
@@ -378,20 +414,20 @@ function chord_shape(root, chord_def, voicing_def)
     shape = best_shape
   end
   
-  if max_distance(shape) < OVERSIZE_CHORD_WIDTH then
-    return shape
-  else
+  if max_distance(shape) > OVERSIZE_CHORD_WIDTH then
     return nil
   end
+  
+  return shape
 end
 
 function max_distance(chord_shape)
-  max_dist = 0
+  local max_dist = 0
   
   for coord_idx1 = 1, #chord_shape - 1 do
     for coord_idx2 = coord_idx1 + 1, #chord_shape do
-      coord1 = chord_shape[coord_idx1]
-      coord2 = chord_shape[coord_idx2]
+      local coord1 = chord_shape[coord_idx1]
+      local coord2 = chord_shape[coord_idx2]
       max_dist = math.max(max_dist, coord_distance(coord1, coord2))
     end
   end
@@ -404,13 +440,52 @@ function coord_distance(coord1, coord2)
 end
 
 function correct_keys_held()
-  if num_active(enabled_lights) == 0 then
+  if num_active(enabled_coords) == 0 then
     return false
   end
   
+  if dark_mode then
+    return dark_mode_correct_keys_held()
+  else
+    return light_mode_correct_keys_held()
+  end
+end
+
+function dark_mode_correct_keys_held()
+  local held_notes = {}
+  local enabled_notes = {}
+
   for x = 1, g.cols do
     for y = 1, g.rows do
-      if held_keys[y][x] ~= enabled_lights[y][x] then
+      if held_keys[y][x] ~= 0 then
+        held_notes[coords_to_note(x, y)] = true
+      end
+      
+      if enabled_coords[y][x] ~= 0 then
+        enabled_notes[coords_to_note(x, y)] = true
+      end
+    end
+  end
+  
+  for held_note, _ in pairs(held_notes) do
+    if not enabled_notes[held_note] then
+      return false
+    end
+  end
+  
+  for enabled_note, _ in pairs(enabled_notes) do
+    if not held_notes[enabled_note] then
+      return false
+    end
+  end
+  
+  return true
+end
+
+function light_mode_correct_keys_held()
+  for x = 1, g.cols do
+    for y = 1, g.rows do
+      if held_keys[y][x] ~= enabled_coords[y][x] then
         return false
       end
     end
@@ -419,18 +494,26 @@ function correct_keys_held()
   return true
 end
 
-function check_for_error(x, y)
-  if enabled_lights[y][x] == 0 then
-    game_errors = game_errors + 1
-  end
-end
+function check_for_error(x_check, y_check)
+  if dark_mode then
+    local enabled_notes = {}
 
-function find_in_grid(x, y, grid, default)
-  if not in_grid(x, y) then
-    return default
+    for x = 1, g.cols do
+      for y = 1, g.rows do
+        if enabled_coords[y][x] > 0 then
+          enabled_notes[coords_to_note(x, y)] = true
+        end
+      end
+    end
+    
+    if not enabled_notes[coords_to_note(x_check, y_check)] then
+      game_errors = game_errors + 1
+    end
+  else
+    if enabled_coords[y_check][x_check] == 0 then
+      game_errors = game_errors + 1
+    end
   end
-  
-  return grid[y][x]
 end
 
 function in_grid(x, y)
@@ -440,15 +523,15 @@ end
 function redraw_lights()
   for x = 1, g.cols do
     for y = 1, g.rows do
-      brightness = show_chords and enabled_lights[y][x] * BRIGHTNESS or 0
-      
-      if guide_option() == 'octave markers' or guide_option() == 'full scale' then
-        if key_option() == coords_to_note(x, y) then
+      local brightness = not dark_mode and enabled_coords[y][x] * BRIGHTNESS or 0
+
+      if params:string('guides') == 'octave markers' or params:string('guides') == 'full scale' then
+        if params:string('scale_keys') == coords_to_note(x, y) then
           brightness = math.max(brightness, OCTAVE_MARKER_BRIGHTNESS)
         end
       end
       
-      if guide_option() == 'full scale' then
+      if params:string('guides') == 'full scale' then
         if in_scale(coords_to_note(x, y)) then
           brightness = math.max(brightness, SCALE_BRIGHTNESS)
         end
@@ -462,11 +545,11 @@ function redraw_lights()
 end
 
 function in_scale(note)
-  root_scale_index = value_index(NOTES, key_option())
+  local root_scale_index = value_index(NOTES, params:string('scale_keys'))
   for _, interval in pairs(scale_definition()) do
-    scale_index = ((root_scale_index + interval - 1) % 12) + 1
+    local scale_index = ((root_scale_index + interval - 1) % 12) + 1
     
-    scale_note = NOTES[scale_index]
+    local scale_note = NOTES[scale_index]
     if note == scale_note then
       return true
     end
@@ -475,36 +558,46 @@ function in_scale(note)
   return false
 end
 
-function update_game()
-  time_elapsed = os.time() - game_start_time
+function high_score_key()
+  local key = params:string('scale_types')
+  key = key .. ',' .. params:string('voicings')
+  key = key .. ',' .. (dark_mode and 'dark' or 'light')
+  key = key .. ',' .. params:get('num_hands')
+  key = key .. ',' .. game_length()
+  return key
+end
 
-  activate_chords()
-  redraw_lights()
-  redraw_screen()
+function high_score()
+  return high_scores()[high_score_key()] or 0
+end
 
-  if correct_keys_held() then
-    enabled_lights = fresh_grid()
-    game_key_groups_finished = game_key_groups_finished + 1
-  end
+function high_scores()
+  return tab.load(high_score_filename()) or {}
+end
+
+function high_score_filename()
+  return norns.state.data .. "high_scores.csv"
+end
+
+function update_high_score()
+  local new_high_scores = high_scores()
+  local new_high_score = math.max(high_score(), game_score())
+  new_high_scores[high_score_key()] = new_high_score
   
-  if game_key_groups_finished == GAME_LENGTH then
-    end_game()
-  end
+  tab.save(new_high_scores, high_score_filename())
 end
 
 function start_game()
   state = 'game_in_progress'
-  game_key_groups_finished = 0
+  rounds_finished = 0
   game_errors = 0
+  enabled_coords = fresh_grid()
   game_start_time = os.time()
-  main_loop:stop()
-  game_loop:start()
 end
 
 function end_game()
   state = 'game_over'
-  game_loop:stop()
-  main_loop:start()
+  update_high_score()
 end
 
 function redraw_screen()
@@ -530,12 +623,10 @@ function redraw_screen()
 end
 
 function redraw_screen_free()
-  if show_chords then
-    screen.level(15)
-    screen.font_size(13)
-    screen.move(64, 28)
-    screen.text_center(chord_description)
-  end
+  screen.level(15)
+  screen.font_size(13)
+  screen.move(64, 28)
+  screen.text_center(chord_description)
 
   screen.level(5)
   screen.font_face(1)
@@ -543,7 +634,7 @@ function redraw_screen_free()
   screen.move(64, 54)
   screen.text_center('K2 to begin game')
   screen.move(64, 63)
-  screen.text_center('K3 to ' .. (show_chords and 'hide' or 'show') .. ' chords')
+  screen.text_center('K3 to ' .. (dark_mode and 'show' or 'hide') .. ' chords')
 end
 
 function redraw_screen_game_loading()
@@ -552,19 +643,36 @@ function redraw_screen_game_loading()
   screen.font_size(8)
   screen.move(64, 9)
   screen.text_center('press K2 again to begin game')
-  -- TODO - print high score
+  screen.move(64, 18)
+  screen.text_center('press K3 for ' .. (dark_mode and 'light mode' or 'DARK MODE'))
+  
+  screen.move(64, 36)
+  screen.text_center('high score: ' .. high_score())
+
   screen.move(64, 54)
-  screen.text_center(options_text())
+  screen.text_center(options_text1())
   screen.move(64, 63)
-  screen.text_center(scale_option())
+  screen.text_center(options_text2())
 end
 
 function redraw_screen_game_in_progress()
-  screen.level(15)
-  screen.font_size(13)
-  screen.move(64, 28)
-  screen.text_center(game_key_groups_finished .. '/' .. GAME_LENGTH)
-  
+  if dark_mode then
+    screen.level(10)
+    screen.font_size(10)
+    screen.move(64, 11)
+    screen.text_center('DARK MODE - ' .. rounds_finished .. '/' .. game_length())
+    
+    screen.level(15)
+    screen.font_size(13)
+    screen.move(64, 35)
+    screen.text_center(chord_description)
+  else
+    screen.level(15)
+    screen.font_size(13)
+    screen.move(64, 28)
+    screen.text_center(rounds_finished .. '/' .. game_length())
+  end
+
   screen.level(5)
   screen.font_face(1)
   screen.font_size(8)
@@ -578,7 +686,8 @@ function redraw_screen_game_over()
   screen.level(15)
   screen.font_size(13)
   screen.move(64, 13)
-  screen.text_center('GAME ENDED')
+  local main_text = (game_score() == high_score() and 'HIGH SCORE' or 'GAME ENDED')
+  screen.text_center(main_text)
   
   screen.level(5)
   screen.font_face(1)
@@ -596,37 +705,27 @@ function redraw_screen_game_over()
 end
 
 function game_score()
-  return (game_key_groups_finished * 10) - (time_elapsed * 2) - (game_errors * 5)
+  local per_round_score = dark_mode and 50 or 10
+  return (rounds_finished * per_round_score) - (time_elapsed * 2) - (game_errors * 5)
 end
 
-function options_text()
-  hands_text = number_of_hands() .. (number_of_hands() == 1 and ' hand' or' hands')
-  voicing_text = voicing_option() .. ' voicings'
+function options_text1()
+  local hands_text = params:get('num_hands') .. (params:get('num_hands') == 1 and ' hand' or' hands')
+  local voicing_text = params:string('voicings') .. ' voicings'
   return hands_text .. ', ' .. voicing_text
 end
 
+function options_text2()
+  local rounds_text = game_length() .. ' rounds, '
+  return rounds_text .. params:string('scale_types')
+end
+
 function scale_definition()
-  return SCALE_DEFINITIONS[scale_option()]
+  return SCALE_DEFINITIONS[params:string('scale_types')]
 end
 
-function scale_option()
-  return SCALE_OPTIONS[params:get('scale_types')]
-end
-
-function key_option()
-  return NOTES[params:get('scale_keys')]
-end
-
-function voicing_option()
-  return VOICING_OPTIONS[params:get('voicings')]
-end
-
-function guide_option()
-  return GUIDES_OPTIONS[params:get('guides')]
-end
-
-function number_of_hands()
-  return params:get('num_hands')
+function game_length()
+  return dark_mode and DARK_MODE_GAME_LENGTH or LIGHT_MODE_GAME_LENGTH
 end
 
 function round(num)
@@ -639,22 +738,8 @@ function table_length(obj)
   return count
 end
 
-function fresh_grid(b)
-  b = b or 0
-  return {
-    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
-    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
-    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
-    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
-    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
-    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
-    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
-    {b, b, b, b, b, b, b, b, b, b, b, b, b, b, b, b},
-  }
-end
-
 function combine_grids(first_grid, second_grid)
-  result = fresh_grid()
+  local result = fresh_grid()
   
   for x = 1, g.cols do
     for y = 1, g.rows do
@@ -678,7 +763,7 @@ function value_index(tab, value)
 end
 
 function num_active(grid)
-  count = 0
+  local count = 0
   for x = 1, g.cols do
     for y = 1, g.rows do
       if grid[y][x] ~= 0 then
