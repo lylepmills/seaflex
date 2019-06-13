@@ -6,12 +6,6 @@
 -- match brightly lit keys, in
 -- dark mode any voicing with
 -- correct notes is accepted.
---
--- in game mode, high scores
--- are saved separately for
--- different setting 
--- combinations as shown on 
--- game load screen.
 
 local SCALE_BRIGHTNESS = 2
 local OCTAVE_MARKER_BRIGHTNESS = 5
