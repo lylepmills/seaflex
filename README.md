@@ -1,6 +1,8 @@
 # seaflex
 companion app for earthsea
 
+https://llllllll.co/t/seaflex
+
 This project started with me wanting to get better at playing chords on the grid layout of earthsea for norns, and struggling to figure them out on the fly. So I built a tool to practice, and thought other folks might find it useful too.
 
 In particular I wanted to build up my muscle memory for common chord shapes in various voicings, which seaflex helps with. Options for scale, scale guides, voicing complexity, as well as two-handed vs one-handed play are available in the params page.
