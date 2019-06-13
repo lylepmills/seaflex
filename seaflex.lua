@@ -1,4 +1,6 @@
 -- seaflex
+-- https://llllllll.co/t/seaflex
+--
 -- companion app for earthsea
 -- 
 -- play grid notes correctly to 
