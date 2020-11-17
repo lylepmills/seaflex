@@ -760,7 +760,7 @@ end
 
 function enc(n, delta)
   if n == 1 then
-    mix:delta('output', delta)
+    params:delta('output_level', delta)
   elseif n == 2 then
     params:delta('shape', delta)
   elseif n == 3 then
