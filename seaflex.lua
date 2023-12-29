@@ -92,7 +92,7 @@ local CHORDS = {
   -- aug7 = { 0, 4, 8, 10 }
 }
 
-local polysub = include 'we/lib/polysub'
+local polysub = require 'polysub'
 
 local g = grid.connect()
 
